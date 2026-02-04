@@ -55,11 +55,12 @@ Anthropic sends these headers with every response (no extra API calls needed):
 
 ## Installation
 
-### 1. Clone the repository
+### 1. Clone and install
 
 ```bash
 git clone git@github.com:gaboe/anthropic-multi-account.git
 cd anthropic-multi-account
+bun install
 ```
 
 ### 2. Symlink to OpenCode plugins
@@ -145,29 +146,60 @@ Watch mode (refreshes every 5s):
 bun src/usage.ts --watch
 ```
 
-Output includes colored progress bars:
+Example output:
+
+```
+╔══════════════════════════════════════════════════════════════════╗
+║              anthropic-multi-account usage                       ║
+╚══════════════════════════════════════════════════════════════════╝
+
+┌─ max-5x ◄── ACTIVE        ← cyan border for active account
+│
+│  Session (5h)
+│  █████████                                           18%
+│  Resets Feb 4 at 5:00 PM
+│
+│  Weekly (all models)
+│  ██                                                  4%
+│  Resets Feb 11 at 9:00 AM
+└─
+
+┌─ max-20x
+│  Session (5h)
+│  ███████████████████████████                         54%
+└─
+
+  Requests: 473
+```
+
+Colors:
 - 🟢 Green: < 50%
 - 🟡 Yellow: 50-70%  
 - 🔴 Red: > 70%
+- 🔵 Cyan: active account border
 
 ## Configuration
 
 Constants in `src/index.mjs`:
 
 ```javascript
-const THRESHOLD = 0.70;      // Switch TO x20 when ANY metric > 70%
-const RECOVER = 0.60;        // Switch BACK when ALL metrics < 60%
+const THRESHOLD = 0.70;      // Switch to fallback when ANY metric > 70%
+const RECOVER = 0.60;        // Switch back when ALL metrics < 60%
 const CHECK_INTERVAL = 3600000; // Check recovery every 1 hour
 ```
 
 ## Data Storage
 
-All state is stored in `~/.local/share/opencode/auth.json` under `anthropic.multiAccounts`:
+Data is split into two files to prevent corruption from frequent writes:
 
-- `accounts` - Array of configured accounts with session keys
+**`~/.local/share/opencode/auth.json`** - Tokens (changes rarely)
+- `accounts` - Array of accounts with access/refresh tokens
+
+**`~/.local/share/opencode/multi-account-state.json`** - Runtime state (changes frequently)
 - `currentAccount` - Currently active account name
 - `usage` - Per-account usage metrics with timestamps
 - `requestCount` - Total requests made through the plugin
+- `lastPrimaryCheck` - Timestamp of last recovery check
 
 ## License
 

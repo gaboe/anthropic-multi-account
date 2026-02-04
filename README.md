@@ -111,17 +111,16 @@ Check current usage across accounts:
 bun src/usage.ts
 ```
 
-Output:
-```
-Account: max-5x
-  Current session
-  ████████████████████                                40% used
-  Resets Feb 4 at 12:00 PM GMT+1
+Watch mode (refreshes every 5s):
 
-  Current week (all models)
-  ██                                                  4% used
-  Resets Feb 11 at 9:00 AM GMT+1
+```bash
+bun src/usage.ts --watch
 ```
+
+Output includes colored progress bars:
+- 🟢 Green: < 50%
+- 🟡 Yellow: 50-70%  
+- 🔴 Red: > 70%
 
 ## Configuration
 

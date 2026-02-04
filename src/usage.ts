@@ -74,8 +74,11 @@ function render(watchMode: boolean) {
 
   for (const account of accounts) {
     const isActive = state.currentAccount === account.name;
-    const marker = isActive ? ' \x1b[1;36m◄── ACTIVE\x1b[0m' : '';
-    console.log(`\n┌─ ${isActive ? '\x1b[1;37m' : ''}${account.name}\x1b[0m${marker}`);
+    if (isActive) {
+      console.log(`\n\x1b[1;36m┌─ ${account.name} ◄── ACTIVE\x1b[0m`);
+    } else {
+      console.log(`\n┌─ ${account.name}`);
+    }
     
     const usage = state.usage?.[account.name];
     if (!usage) {

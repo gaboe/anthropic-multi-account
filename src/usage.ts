@@ -1,19 +1,28 @@
 #!/usr/bin/env bun
 
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
-const AUTH_FILE = process.env.AUTH_FILE || join(homedir(), ".local/share/opencode/auth.json");
+const AUTH_FILE = join(homedir(), ".local/share/opencode/auth.json");
+const STATE_FILE = join(homedir(), ".local/share/opencode/multi-account-state.json");
 const WATCH_INTERVAL = 5000; // 5 seconds
 
-// Read auth.json
-function loadAuth() {
+function loadAccounts() {
   try {
     const data = JSON.parse(readFileSync(AUTH_FILE, "utf-8"));
-    return data.anthropic?.multiAccounts;
-  } catch (e: any) {
-    return null;
+    return data.anthropic?.multiAccounts?.accounts || [];
+  } catch {
+    return [];
+  }
+}
+
+function loadState() {
+  if (!existsSync(STATE_FILE)) return {};
+  try {
+    return JSON.parse(readFileSync(STATE_FILE, "utf-8"));
+  } catch {
+    return {};
   }
 }
 
@@ -47,10 +56,10 @@ function colorize(text: string, utilization: number): string {
 }
 
 function render(watchMode: boolean) {
-  const multi = loadAuth();
+  const accounts = loadAccounts();
+  const state = loadState();
   
   if (watchMode) {
-    // Clear screen and move cursor to top
     process.stdout.write('\x1b[2J\x1b[H');
   }
   
@@ -58,17 +67,17 @@ function render(watchMode: boolean) {
   console.log('║              anthropic-multi-account usage                       ║');
   console.log('╚══════════════════════════════════════════════════════════════════╝');
   
-  if (!multi?.accounts?.length) {
+  if (!accounts.length) {
     console.log("\n  No multi-account configuration found");
     return;
   }
 
-  for (const account of multi.accounts) {
-    const isActive = multi.currentAccount === account.name;
+  for (const account of accounts) {
+    const isActive = state.currentAccount === account.name;
     const marker = isActive ? ' ◄── active' : '';
     console.log(`\n┌─ ${account.name}${marker}`);
     
-    const usage = multi.usage?.[account.name];
+    const usage = state.usage?.[account.name];
     if (!usage) {
       console.log('│  No usage data yet');
       console.log('└─');
@@ -101,7 +110,7 @@ function render(watchMode: boolean) {
     console.log('└─');
   }
   
-  console.log(`\n  Requests: ${multi.requestCount || 0}`);
+  console.log(`\n  Requests: ${state.requestCount || 0}`);
   
   if (watchMode) {
     console.log(`  Updated: ${new Date().toLocaleTimeString()}`);

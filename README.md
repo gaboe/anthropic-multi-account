@@ -74,7 +74,28 @@ export OPENCODE_DISABLE_DEFAULT_PLUGINS=true
 
 ### 4. Configure accounts
 
-Edit `~/.local/share/opencode/auth.json`:
+Use the add-account utility to authenticate each account:
+
+```bash
+# Add your primary account (5x rate limit)
+bun src/add-account.ts max-5x
+
+# Add your fallback account (20x rate limit)  
+bun src/add-account.ts max-20x
+```
+
+The utility will:
+1. Generate an OAuth authorization URL
+2. You open it in browser and log in to your Anthropic Max account
+3. After approval, copy the callback URL from browser
+4. Paste it back - tokens are automatically saved
+
+**Important**: Each account requires a **separate Anthropic Max subscription**. Log out and log in with different credentials for each account.
+
+<details>
+<summary>Manual configuration (advanced)</summary>
+
+Tokens are stored in `~/.local/share/opencode/auth.json`:
 
 ```json
 {
@@ -83,11 +104,9 @@ Edit `~/.local/share/opencode/auth.json`:
       "accounts": [
         {
           "name": "max-5x",
-          "sessionKey": "your-session-key-here"
-        },
-        {
-          "name": "max-20x", 
-          "sessionKey": "your-other-session-key-here"
+          "access": "your-access-token",
+          "refresh": "your-refresh-token",
+          "expires": 1234567890000
         }
       ]
     }
@@ -95,7 +114,8 @@ Edit `~/.local/share/opencode/auth.json`:
 }
 ```
 
-Session keys can be obtained from browser cookies when logged into console.anthropic.com.
+Tokens are automatically refreshed when expired.
+</details>
 
 ### 5. Restart OpenCode
 

@@ -4,7 +4,9 @@ OpenCode plugin for managing multiple Anthropic Max subscription accounts with a
 
 ## Why?
 
-Anthropic Max subscriptions have rate limits. If you have multiple accounts (e.g., 5x and 20x), this plugin automatically switches between them based on usage - keeping your primary account for as long as possible while failing over to the backup when needed.
+Anthropic Max subscriptions have rate limits. This plugin automatically switches between multiple accounts based on usage - keeping your primary account as long as possible while failing over to backups when needed.
+
+**Works with any number of accounts** - 2x 5x, 3x 5x, 5x + 20x, etc.
 
 ## How It Works
 
@@ -13,7 +15,7 @@ Anthropic Max subscriptions have rate limits. If you have multiple accounts (e.g
 │                      Request Flow                           │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│   Request  ──►  Check max-5x metrics  ──►  Route request   │
+│   Request  ──►  Check primary metrics  ──►  Route request  │
 │                        │                        │           │
 │                        ▼                        ▼           │
 │               Any metric > 70%?         Use selected        │
@@ -21,7 +23,7 @@ Anthropic Max subscriptions have rate limits. If you have multiple accounts (e.g
 │                  YES      NO                 │              │
 │                   │       │                  ▼              │
 │                   ▼       ▼           Capture response      │
-│              Use x20   Use x5          headers              │
+│            Use fallback  Use primary    headers             │
 │                                              │              │
 │                                              ▼              │
 │                                        Update usage         │
@@ -30,13 +32,18 @@ Anthropic Max subscriptions have rate limits. If you have multiple accounts (e.g
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Account Priority
+
+- **accounts[0]** = Primary (always preferred)
+- **accounts[1..n]** = Fallbacks (in order of preference)
+
 ### Threshold Logic
 
 | Condition | Action |
 |-----------|--------|
-| Any metric > **70%** on max-5x | Switch to max-20x |
-| All metrics < **60%** on max-5x | Switch back to max-5x |
-| Currently on max-20x | Check recovery every **1 hour** |
+| Primary > **70%** | Switch to first fallback < 70% |
+| Primary < **60%** | Switch back to primary |
+| On fallback | Check recovery every **1 hour** |
 
 ### Metrics Tracked
 
@@ -77,12 +84,13 @@ export OPENCODE_DISABLE_DEFAULT_PLUGINS=true
 Use the add-account utility to authenticate each account:
 
 ```bash
-# Add your primary account (5x rate limit)
-bun src/add-account.ts max-5x
-
-# Add your fallback account (20x rate limit)  
-bun src/add-account.ts max-20x
+# Add accounts (first = primary, rest = fallbacks)
+bun src/add-account.ts primary
+bun src/add-account.ts fallback1
+bun src/add-account.ts fallback2  # optional - add as many as you want
 ```
+
+Name accounts whatever you want - `work`, `personal`, `max-5x`, `backup`, etc.
 
 The utility will:
 1. Generate an OAuth authorization URL
@@ -103,7 +111,7 @@ Tokens are stored in `~/.local/share/opencode/auth.json`:
     "multiAccounts": {
       "accounts": [
         {
-          "name": "max-5x",
+          "name": "primary",
           "access": "your-access-token",
           "refresh": "your-refresh-token",
           "expires": 1234567890000

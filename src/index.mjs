@@ -112,31 +112,25 @@ async function exchange(code, verifier) {
 // }
 
 /**
- * Select account using threshold-based switching
- * Monitors 3 usage metrics: session5h, weekly7d, weekly7dSonnet
- * Switches to x20 when ANY metric > 70%, back to x5 when ALL < 60%
- * @param {Array} accounts
- * @param {Object} state - Contains usage data and current account
+ * Select account based on threshold logic
+ * accounts[0] = primary (preferred), accounts[1..n] = fallbacks
+ * Switches to fallback when primary > 70%, back when primary < 60%
  */
 function selectThresholdAccount(accounts, state) {
-  const THRESHOLD = 0.70;  // Switch TO x20 when ANY metric > 70%
-  const RECOVER = 0.60;    // Switch BACK when ALL metrics < 60%
-  const CHECK_INTERVAL = 3600000; // 1 hour in ms
+  const THRESHOLD = 0.70;
+  const RECOVER = 0.60;
+  const CHECK_INTERVAL = 3600000; // 1 hour
 
   if (!accounts || accounts.length === 0) return null;
+  if (accounts.length === 1) return accounts[0];
 
-  const x5 = accounts.find(a => a.name === 'max-5x');
-  const x20 = accounts.find(a => a.name === 'max-20x');
+  const primary = accounts[0];
+  const fallbacks = accounts.slice(1);
 
-  // Cold start: default to x5
   if (!state || !state.currentAccount) {
-    return x5 || accounts[0];
+    return primary;
   }
 
-  const x5Usage = state.usage?.['max-5x'];
-  const currentIsX5 = state.currentAccount === 'max-5x';
-
-  // Helper: get max utilization across all 3 metrics
   function getMaxUtilization(usage) {
     if (!usage) return 0;
     return Math.max(
@@ -146,7 +140,6 @@ function selectThresholdAccount(accounts, state) {
     );
   }
 
-  // Helper: find which metric is highest
   function getHighestMetric(usage) {
     if (!usage) return { name: 'unknown', value: 0 };
     const metrics = [
@@ -157,27 +150,45 @@ function selectThresholdAccount(accounts, state) {
     return metrics.reduce((max, m) => m.value > max.value ? m : max);
   }
 
-  if (currentIsX5) {
-    // Check if ANY metric > 70% → switch to x20
-    const maxUtil = getMaxUtilization(x5Usage);
+  const primaryUsage = state.usage?.[primary.name];
+  const currentIsPrimary = state.currentAccount === primary.name;
+
+  if (currentIsPrimary) {
+    const maxUtil = getMaxUtilization(primaryUsage);
     if (maxUtil > THRESHOLD) {
-      const highest = getHighestMetric(x5Usage);
-      console.log(`[multi-account] Switched to max-20x: max-5x ${highest.name} at ${Math.round(highest.value * 100)}%`);
-      return x20 || accounts[1];
+      // Find first fallback with utilization < threshold
+      for (const fallback of fallbacks) {
+        const fallbackUsage = state.usage?.[fallback.name];
+        const fallbackUtil = getMaxUtilization(fallbackUsage);
+        if (fallbackUtil < THRESHOLD) {
+          const highest = getHighestMetric(primaryUsage);
+          console.log(`[multi-account] ${primary.name} → ${fallback.name}: ${highest.name} at ${Math.round(highest.value * 100)}%`);
+          return fallback;
+        }
+      }
+      // All fallbacks also over threshold - use the one with lowest utilization
+      const best = fallbacks.reduce((lowest, f) => {
+        const util = getMaxUtilization(state.usage?.[f.name]);
+        const lowestUtil = getMaxUtilization(state.usage?.[lowest.name]);
+        return util < lowestUtil ? f : lowest;
+      }, fallbacks[0]);
+      const highest = getHighestMetric(primaryUsage);
+      console.log(`[multi-account] ${primary.name} → ${best.name}: ${highest.name} at ${Math.round(highest.value * 100)}% (all accounts busy)`);
+      return best;
     }
-    return x5 || accounts[0];
+    return primary;
   } else {
-    // Currently on x20, check if should switch back
-    const timeSinceCheck = Date.now() - (state.lastX5Check || 0);
+    // On fallback - check if should return to primary
+    const timeSinceCheck = Date.now() - (state.lastPrimaryCheck || 0);
     if (timeSinceCheck > CHECK_INTERVAL) {
-      // Switch back only if ALL metrics < 60%
-      const maxUtil = getMaxUtilization(x5Usage);
+      const maxUtil = getMaxUtilization(primaryUsage);
       if (maxUtil < RECOVER) {
-        console.log(`[multi-account] Switched to max-5x: all metrics below 60%`);
-        return x5 || accounts[0];
+        console.log(`[multi-account] → ${primary.name}: all metrics below 60%`);
+        return primary;
       }
     }
-    return x20 || accounts[1];
+    // Stay on current fallback
+    return accounts.find(a => a.name === state.currentAccount) || fallbacks[0];
   }
 }
 
@@ -244,12 +255,11 @@ export async function AnthropicAuthPlugin({ client }) {
 
                // Track state for threshold logic
                const previousAccount = multi.currentAccount;
+               const primaryName = multi.accounts[0]?.name;
                multi.currentAccount = account.name;
-               if (account.name !== previousAccount) {
-                 // Account switched - update lastX5Check if now on x5
-                 if (account.name === 'max-5x') {
-                   multi.lastX5Check = Date.now();
-                 }
+               if (account.name !== previousAccount && account.name !== primaryName) {
+                 // Switched away from primary - record time for recovery check
+                 multi.lastPrimaryCheck = Date.now();
                }
 
                // Check if token needs refresh

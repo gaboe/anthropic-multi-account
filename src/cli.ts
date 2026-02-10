@@ -114,10 +114,15 @@ function renderUsage(watch: boolean) {
       continue;
     }
     
+    const t = normalizeThresholds(config.threshold, DEFAULTS.threshold);
+    const thresholdMap = { session5h: t.session5h, weekly7d: t.weekly7d, weekly7dSonnet: t.weekly7dSonnet } as const;
+    
     for (const [label, key] of [['Session (5h)', 'session5h'], ['Weekly (all)', 'weekly7d'], ['Weekly (Sonnet)', 'weekly7dSonnet']] as const) {
       const u = usage[key]?.utilization || 0;
+      const th = thresholdMap[key];
+      const thLabel = `\x1b[2m(threshold ${Math.round(th * 100)}%)\x1b[0m`;
       console.log(`${c}│${r}`);
-      console.log(`${c}│${r}  ${label}`);
+      console.log(`${c}│${r}  ${label}  ${thLabel}`);
       console.log(`${c}│${r}  ${colorize(progressBar(u), u)}  ${colorize(`${Math.round(u * 100)}%`, u)}`);
       console.log(`${c}│${r}  Resets ${formatResetTime(usage[key]?.reset)}`);
     }

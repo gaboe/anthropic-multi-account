@@ -129,7 +129,7 @@ function renderUsage(watch: boolean) {
     console.log(`${c}└─${r}`);
   }
   
-  console.log(`\n  Requests: ${state.requestCount || 0}`);
+  console.log('');
   
   if (watch) {
     console.log(`  Updated: ${new Date().toLocaleTimeString()}  │  Ctrl+C to exit`);

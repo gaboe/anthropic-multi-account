@@ -1,8 +1,43 @@
 {
-  "name": "anthropic-multi-auth",
+  "name": "oc-anthropic-multi-account",
   "version": "1.0.0",
   "type": "module",
-  "main": "src/index.mjs",
+  "description": "OpenCode plugin for managing multiple Anthropic Max accounts with automatic failover based on rate limit utilization",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.mjs --outfile dist/index.js --format esm --target node",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run clean && bun run build",
+    "postinstall": "node postinstall.mjs || true"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "opencode",
+    "anthropic",
+    "claude",
+    "multi-account",
+    "auth",
+    "oauth",
+    "failover",
+    "rate-limit",
+    "plugin"
+  ],
+  "author": "gaboe",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gaboe/anthropic-multi-account.git"
+  },
+  "bugs": {
+    "url": "https://github.com/gaboe/anthropic-multi-account/issues"
+  },
+  "homepage": "https://github.com/gaboe/anthropic-multi-account#readme",
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3"
   }

@@ -1,7 +1,7 @@
 import { generatePKCE } from "@openauthjs/openauth/pkce";
-import { readFileSync, writeFileSync, existsSync, copyFileSync, renameSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, copyFileSync, renameSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { join, dirname } from "path";
 
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const AUTH_FILE = join(homedir(), ".local/share/opencode/auth.json");
@@ -28,6 +28,7 @@ function safeReadJSON(filePath, fallback) {
 // Atomic write: backup current → write to .tmp → rename to target
 function safeWriteJSON(filePath, data) {
   try {
+    mkdirSync(dirname(filePath), { recursive: true });
     if (existsSync(filePath)) {
       copyFileSync(filePath, filePath + '.bak');
     }

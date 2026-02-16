@@ -4,80 +4,6 @@
 
 Never hit a Claude rate limit again with proactive multi-account switching for OpenCode.
 
-## Why This Plugin?
-
-Claude Max subscriptions have strict rate limits. Hitting them kills your flow and forces you to wait minutes or hours before you can work again. This plugin manages multiple accounts and automatically switches between them based on real-time usage metrics.
-
-### Comparison Table
-
-| Tool | Multi-Account | Proactive Switching | Header-Based Metrics | Mid-Session Switch | OpenCode Plugin |
-|------|--------------|--------------------|--------------------|-------------------|----------------|
-| **oc-anthropic-multi-account** | Yes (unlimited) | Yes (threshold-based) | Yes (3 metrics) | Yes | Yes |
-| anthropic-multi-auth | Yes | No (session-sticky) | No (quota API check) | No | Yes |
-| asterisk | Yes | No (manual CLI) | No | No (restart required) | No |
-| claude-swap | Yes | No (manual CLI) | No | No (restart required) | No |
-| ai-fallback | Cross-provider | No (reactive/429) | No | Yes | No |
-| @upstash/model-multiplexer | Cross-provider | No (reactive/429) | No | Yes | No |
-| OpenCode built-in | Single account | No | No | N/A | Yes |
-
-### What This Plugin Does Differently
-
-- Proactive switching reads rate limit headers from every response and switches before you hit a 429 error.
-- Tracks 3 independent metrics: session (5h), weekly (all models), and weekly (Sonnet).
-- Per-metric configurable thresholds allow fine-grained control over when to switch.
-- Mid-session switching ensures you aren't stuck with a depleted account.
-- Primary-first logic with automatic recovery switches back when your main account recovers.
-- Atomic file writes with backups ensure crash-safe state persistence.
-- Works with any number of accounts and subscription tiers (5x, 20x, or a mix).
-- Live usage dashboard via CLI provides full visibility into your account status.
-
-## How It Works
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Request Flow                           │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   Request  ──►  Check primary metrics  ──►  Route request  │
-│                        │                        │           │
-│                        ▼                        ▼           │
-│               Any metric > 70%?         Use selected        │
-│                   │       │              account            │
-│                  YES      NO                 │              │
-│                   │       │                  ▼              │
-│                   ▼       ▼           Capture response      │
-│            Use fallback  Use primary    headers             │
-│                                              │              │
-│                                              ▼              │
-│                                        Update usage         │
-│                                        metrics              │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Account Priority
-
-- **accounts[0]** = Primary (always preferred)
-- **accounts[1..n]** = Fallbacks (in order of preference)
-
-### Threshold Logic
-
-Each metric (session, weekly, sonnet) can have its own threshold.
-
-| Condition | Action |
-|-----------|--------|
-| Any primary metric > its **threshold** | Switch to first fallback under thresholds |
-| All primary metrics < their **thresholds** | Switch back to primary |
-| On fallback | Check recovery every **1 hour** or on rate limit window reset |
-
-### Metrics Tracked
-
-Anthropic sends these headers with every response (no extra API calls needed):
-
-- `anthropic-ratelimit-unified-5h-utilization` - 5-hour rolling window
-- `anthropic-ratelimit-unified-7d-utilization` - 7-day rolling window  
-- `anthropic-ratelimit-unified-7d_sonnet-utilization` - 7-day Sonnet-specific
-
 ## Installation
 
 ### Option 1: npm (Recommended)
@@ -156,6 +82,68 @@ Tokens are automatically refreshed when expired.
 opencode
 ```
 
+## Why This Plugin?
+
+Claude Max subscriptions have strict rate limits. Hitting them kills your flow and forces you to wait minutes or hours before you can work again. This plugin manages multiple accounts and automatically switches between them based on real-time usage metrics.
+
+### What This Plugin Does Differently
+
+- Proactive switching reads rate limit headers from every response and switches before you hit a 429 error.
+- Tracks 3 independent metrics: session (5h), weekly (all models), and weekly (Sonnet).
+- Per-metric configurable thresholds allow fine-grained control over when to switch.
+- Mid-session switching ensures you aren't stuck with a depleted account.
+- Primary-first logic with automatic recovery switches back when your main account recovers.
+- Atomic file writes with backups ensure crash-safe state persistence.
+- Works with any number of accounts and subscription tiers (5x, 20x, or a mix).
+- Live usage dashboard via CLI provides full visibility into your account status.
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Request Flow                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   Request  ──►  Check primary metrics  ──►  Route request  │
+│                        │                        │           │
+│                        ▼                        ▼           │
+│               Any metric > 70%?         Use selected        │
+│                   │       │              account            │
+│                  YES      NO                 │              │
+│                   │       │                  ▼              │
+│                   ▼       ▼           Capture response      │
+│            Use fallback  Use primary    headers             │
+│                                              │              │
+│                                              ▼              │
+│                                        Update usage         │
+│                                        metrics              │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Account Priority
+
+- **accounts[0]** = Primary (always preferred)
+- **accounts[1..n]** = Fallbacks (in order of preference)
+
+### Threshold Logic
+
+Each metric (session, weekly, sonnet) can have its own threshold.
+
+| Condition | Action |
+|-----------|--------|
+| Any primary metric > its **threshold** | Switch to first fallback under thresholds |
+| All primary metrics < their **thresholds** | Switch back to primary |
+| On fallback | Check recovery every **1 hour** or on rate limit window reset |
+
+### Metrics Tracked
+
+Anthropic sends these headers with every response (no extra API calls needed):
+
+- `anthropic-ratelimit-unified-5h-utilization` - 5-hour rolling window
+- `anthropic-ratelimit-unified-7d-utilization` - 7-day rolling window  
+- `anthropic-ratelimit-unified-7d_sonnet-utilization` - 7-day Sonnet-specific
+
 ## CLI
 
 All commands via unified CLI:
@@ -231,6 +219,14 @@ Data is split into two files to prevent corruption from frequent writes:
 - `usage` - Per-account usage metrics with timestamps
 - `requestCount` - Total requests made through the plugin
 - `lastPrimaryCheck` - Timestamp of last recovery check
+
+## Comparison
+
+| Tool | Multi-Account | Proactive Switching | Header-Based Metrics | Mid-Session Switch | OpenCode Plugin |
+|------|--------------|--------------------|--------------------|-------------------|----------------|
+| **oc-anthropic-multi-account** | Yes (unlimited) | Yes (threshold-based) | Yes (3 metrics) | Yes | Yes |
+| anthropic-multi-auth | Yes | No (session-sticky) | No (quota API check) | No | Yes |
+| OpenCode built-in | Single account | No | No | N/A | Yes |
 
 ## License
 

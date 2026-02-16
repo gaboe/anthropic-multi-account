@@ -1,12 +1,35 @@
-# anthropic-multi-account
+# oc-anthropic-multi-account
 
-OpenCode plugin for managing multiple Anthropic Max subscription accounts with automatic failover based on rate limit utilization.
+[![npm version](https://img.shields.io/npm/v/oc-anthropic-multi-account)](https://www.npmjs.com/package/oc-anthropic-multi-account)
 
-## Why?
+Never hit a Claude rate limit again with proactive multi-account switching for OpenCode.
 
-Anthropic Max subscriptions have rate limits. This plugin automatically switches between multiple accounts based on usage - keeping your primary account as long as possible while failing over to backups when needed.
+## Why This Plugin?
 
-**Works with any number of accounts** - 2x 5x, 3x 5x, 5x + 20x, etc.
+Claude Max subscriptions have strict rate limits. Hitting them kills your flow and forces you to wait minutes or hours before you can work again. This plugin manages multiple accounts and automatically switches between them based on real-time usage metrics.
+
+### Comparison Table
+
+| Tool | Multi-Account | Proactive Switching | Header-Based Metrics | Mid-Session Switch | OpenCode Plugin |
+|------|--------------|--------------------|--------------------|-------------------|----------------|
+| **oc-anthropic-multi-account** | Yes (unlimited) | Yes (threshold-based) | Yes (3 metrics) | Yes | Yes |
+| anthropic-multi-auth | Yes | No (session-sticky) | No (quota API check) | No | Yes |
+| asterisk | Yes | No (manual CLI) | No | No (restart required) | No |
+| claude-swap | Yes | No (manual CLI) | No | No (restart required) | No |
+| ai-fallback | Cross-provider | No (reactive/429) | No | Yes | No |
+| @upstash/model-multiplexer | Cross-provider | No (reactive/429) | No | Yes | No |
+| OpenCode built-in | Single account | No | No | N/A | Yes |
+
+### What This Plugin Does Differently
+
+- Proactive switching reads rate limit headers from every response and switches before you hit a 429 error.
+- Tracks 3 independent metrics: session (5h), weekly (all models), and weekly (Sonnet).
+- Per-metric configurable thresholds allow fine-grained control over when to switch.
+- Mid-session switching ensures you aren't stuck with a depleted account.
+- Primary-first logic with automatic recovery switches back when your main account recovers.
+- Atomic file writes with backups ensure crash-safe state persistence.
+- Works with any number of accounts and subscription tiers (5x, 20x, or a mix).
+- Live usage dashboard via CLI provides full visibility into your account status.
 
 ## How It Works
 
@@ -57,34 +80,44 @@ Anthropic sends these headers with every response (no extra API calls needed):
 
 ## Installation
 
-### 1. Clone and install
+### Option 1: npm (Recommended)
+
+Install the plugin via bun:
 
 ```bash
-git clone git@github.com:gaboe/anthropic-multi-account.git
-cd anthropic-multi-account
-bun install
+bun add oc-anthropic-multi-account
 ```
 
-### 2. Symlink to OpenCode plugins
+Then add `oc-anthropic-multi-account` to your OpenCode configuration plugins list.
+
+### Option 2: Development
+
+Clone the repository and symlink it to your OpenCode plugins directory:
 
 ```bash
+git clone git@github.com:gaboe/oc-anthropic-multi-account.git
+cd oc-anthropic-multi-account
+bun install
+
 mkdir -p ~/.config/opencode/plugins
-ln -s $(pwd) ~/.config/opencode/plugins/anthropic-multi-account
+ln -s $(pwd) ~/.config/opencode/plugins/oc-anthropic-multi-account
 ```
 
 ### 3. Disable default Anthropic plugin
 
-Add to your `~/.zshrc` or `~/.bashrc`:
+Add this to your `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 export OPENCODE_DISABLE_DEFAULT_PLUGINS=true
 ```
 
-**Important**: Without this, the built-in Anthropic plugin will override the custom fetch wrapper.
+Without this, the built-in Anthropic plugin will override the custom fetch wrapper.
 
 ### 4. Configure accounts
 
-Add accounts using the CLI (first = primary, rest = fallbacks):
+The CLI (`src/cli.ts`) isn't bundled in the npm package. To add accounts or view usage, you must clone the repository as shown in the Development section.
+
+Add accounts using the CLI (the first account added is the primary):
 
 ```bash
 bun src/cli.ts add primary
@@ -92,11 +125,9 @@ bun src/cli.ts add fallback1
 bun src/cli.ts add fallback2
 ```
 
-Name accounts whatever you want - `work`, `personal`, `max-5x`, `backup`, etc.
+You can name accounts anything, such as `work`, `personal`, or `backup`. The CLI will guide you through OAuth authentication for each account.
 
-The CLI will guide you through OAuth authentication for each account.
-
-**Important**: Each account requires a **separate Anthropic Max subscription**.
+Each account requires a separate Anthropic Max subscription.
 
 <details>
 <summary>Manual configuration (advanced)</summary>
@@ -143,7 +174,7 @@ Example output:
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
-║              anthropic-multi-account                             ║
+║              oc-anthropic-multi-account                          ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 ┌─ max-5x ◄── ACTIVE

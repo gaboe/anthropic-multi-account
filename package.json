@@ -39,6 +39,9 @@
   },
   "homepage": "https://github.com/gaboe/oc-anthropic-multi-account#readme",
   "dependencies": {
-    "@openauthjs/openauth": "^0.4.3"
+    "@effect/cli": "0.67.1",
+    "@effect/platform-bun": "0.87.1",
+    "@openauthjs/openauth": "^0.4.3",
+    "effect": "3.19.18"
   }
 }

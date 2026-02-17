@@ -1,10 +1,13 @@
 #!/usr/bin/env bun
 
+import { Args, Command, Options } from "@effect/cli";
+import { BunContext, BunRuntime } from "@effect/platform-bun";
 import { generatePKCE } from "@openauthjs/openauth/pkce";
 import { readFileSync, writeFileSync, existsSync, copyFileSync, renameSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import * as readline from "readline";
+import { Effect, Option } from "effect";
 
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const MULTI_AUTH_FILE = join(homedir(), ".local/share/opencode/multi-account-auth.json");
@@ -67,7 +70,7 @@ function loadAccounts() {
   return safeReadJSON(MULTI_AUTH_FILE, { accounts: [] } as any).accounts || [];
 }
 
-function loadMultiAuth() {
+function loadMultiAuth(): any {
   return safeReadJSON(MULTI_AUTH_FILE, { accounts: [] });
 }
 
@@ -75,7 +78,7 @@ function saveMultiAuth(data: any) {
   safeWriteJSON(MULTI_AUTH_FILE, data);
 }
 
-function loadState() {
+function loadState(): any {
   return safeReadJSON(STATE_FILE, {});
 }
 
@@ -465,44 +468,159 @@ async function cmdAdd(args: string[]) {
   console.log("🎉 Restart OpenCode to use the new account.\n");
 }
 
-// ============================================================================
-// Main
-// ============================================================================
+const usageCommand = Command.make(
+  "usage",
+  {
+    watch: Options.boolean("watch").pipe(Options.withAlias("w")),
+  },
+  ({ watch }) =>
+    Effect.sync(() => {
+      cmdUsage(watch ? ["--watch"] : []);
+    })
+).pipe(Command.withDescription("Show usage across all accounts"));
 
-function printHelp() {
-  console.log(`
-anthropic-multi-account CLI
+const usageAliasCommand = Command.make(
+  "u",
+  {
+    watch: Options.boolean("watch").pipe(Options.withAlias("w")),
+  },
+  ({ watch }) =>
+    Effect.sync(() => {
+      cmdUsage(watch ? ["--watch"] : []);
+    })
+).pipe(Command.withDescription("Alias for usage"));
 
-Usage:
-  bun src/cli.ts <command> [options]
+const configCommand = Command.make(
+  "config",
+  {
+    show: Options.boolean("show"),
+    threshold: Options.text("threshold").pipe(Options.optional),
+    thresholds: Options.text("thresholds").pipe(Options.optional),
+    thresholdSession: Options.text("threshold-session").pipe(Options.optional),
+    thresholdWeekly: Options.text("threshold-weekly").pipe(Options.optional),
+    thresholdSonnet: Options.text("threshold-sonnet").pipe(Options.optional),
+    interval: Options.text("interval").pipe(Options.optional),
+    reset: Options.boolean("reset"),
+  },
+  ({
+    show,
+    threshold,
+    thresholds,
+    thresholdSession,
+    thresholdWeekly,
+    thresholdSonnet,
+    interval,
+    reset,
+  }) =>
+    Effect.sync(() => {
+      const args: string[] = [];
+      if (show) args.push("--show");
+      if (reset) args.push("--reset");
+      if (Option.isSome(threshold)) args.push("--threshold", threshold.value);
+      if (Option.isSome(thresholds)) args.push("--thresholds", thresholds.value);
+      if (Option.isSome(thresholdSession)) args.push("--threshold-session", thresholdSession.value);
+      if (Option.isSome(thresholdWeekly)) args.push("--threshold-weekly", thresholdWeekly.value);
+      if (Option.isSome(thresholdSonnet)) args.push("--threshold-sonnet", thresholdSonnet.value);
+      if (Option.isSome(interval)) args.push("--interval", interval.value);
+      cmdConfig(args);
+    })
+).pipe(Command.withDescription("Show or update threshold configuration"));
 
-Commands:
-  usage [--watch]                     Show usage across all accounts
-  config [--show]                     Show current config
-  config --threshold <0-1>            Set threshold for all metrics (default: 0.70)
-  config --thresholds <s>,<w>,<so>   Set all thresholds at once (e.g. 95,80,90)
-  config --threshold-session <0-1>    Set threshold for session (5h)
-  config --threshold-weekly <0-1>     Set threshold for weekly (7d)
-  config --threshold-sonnet <0-1>     Set threshold for weekly Sonnet (7d)
-  config --interval <minutes>         Set recovery check interval (default: 60)
-  config --reset                      Reset config to defaults
-  add <name>                          Add account (interactive OAuth)
-  add <name> <auth-url> <code>        Add account directly with URL + code
+const configAliasCommand = Command.make(
+  "c",
+  {
+    show: Options.boolean("show"),
+    threshold: Options.text("threshold").pipe(Options.optional),
+    thresholds: Options.text("thresholds").pipe(Options.optional),
+    thresholdSession: Options.text("threshold-session").pipe(Options.optional),
+    thresholdWeekly: Options.text("threshold-weekly").pipe(Options.optional),
+    thresholdSonnet: Options.text("threshold-sonnet").pipe(Options.optional),
+    interval: Options.text("interval").pipe(Options.optional),
+    reset: Options.boolean("reset"),
+  },
+  ({
+    show,
+    threshold,
+    thresholds,
+    thresholdSession,
+    thresholdWeekly,
+    thresholdSonnet,
+    interval,
+    reset,
+  }) =>
+    Effect.sync(() => {
+      const args: string[] = [];
+      if (show) args.push("--show");
+      if (reset) args.push("--reset");
+      if (Option.isSome(threshold)) args.push("--threshold", threshold.value);
+      if (Option.isSome(thresholds)) args.push("--thresholds", thresholds.value);
+      if (Option.isSome(thresholdSession)) args.push("--threshold-session", thresholdSession.value);
+      if (Option.isSome(thresholdWeekly)) args.push("--threshold-weekly", thresholdWeekly.value);
+      if (Option.isSome(thresholdSonnet)) args.push("--threshold-sonnet", thresholdSonnet.value);
+      if (Option.isSome(interval)) args.push("--interval", interval.value);
+      cmdConfig(args);
+    })
+).pipe(Command.withDescription("Alias for config"));
 
-Examples:
-  bun src/cli.ts usage --watch
-  bun src/cli.ts config --thresholds 95,80,90
-  bun src/cli.ts config --threshold 0.95
-  bun src/cli.ts add max-5x
-  bun src/cli.ts add max-20x "https://...?state=xyz" "code#state"
-`);
-}
+const accountNameArg = Args.text({ name: "name" }).pipe(
+  Args.withDescription("Account alias")
+);
+const authUrlArg = Args.text({ name: "auth-url" }).pipe(Args.optional);
+const codeArg = Args.text({ name: "code" }).pipe(Args.optional);
 
-const [cmd, ...args] = process.argv.slice(2);
+const addCommand = Command.make(
+  "add",
+  {
+    name: accountNameArg,
+    authUrl: authUrlArg,
+    code: codeArg,
+  },
+  ({ name, authUrl, code }) =>
+    Effect.tryPromise({
+      try: async () => {
+        const args: string[] = [name];
+        if (Option.isSome(authUrl)) args.push(authUrl.value);
+        if (Option.isSome(code)) args.push(code.value);
+        await cmdAdd(args);
+      },
+      catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+    })
+).pipe(Command.withDescription("Add account (interactive OAuth or direct URL+code)"));
 
-switch (cmd) {
-  case 'usage': case 'u': cmdUsage(args); break;
-  case 'config': case 'c': cmdConfig(args); break;
-  case 'add': case 'a': cmdAdd(args); break;
-  default: printHelp();
-}
+const addAliasCommand = Command.make(
+  "a",
+  {
+    name: accountNameArg,
+    authUrl: authUrlArg,
+    code: codeArg,
+  },
+  ({ name, authUrl, code }) =>
+    Effect.tryPromise({
+      try: async () => {
+        const args: string[] = [name];
+        if (Option.isSome(authUrl)) args.push(authUrl.value);
+        if (Option.isSome(code)) args.push(code.value);
+        await cmdAdd(args);
+      },
+      catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+    })
+).pipe(Command.withDescription("Alias for add"));
+
+const rootCommand = Command.make("anthropic-multi-account", {}).pipe(
+  Command.withDescription("Manage multiple Anthropic Max accounts for OpenCode"),
+  Command.withSubcommands([
+    usageCommand,
+    usageAliasCommand,
+    configCommand,
+    configAliasCommand,
+    addCommand,
+    addAliasCommand,
+  ])
+);
+
+const cli = Command.run(rootCommand, {
+  name: "anthropic-multi-account",
+  version: "1.0.5",
+});
+
+cli(process.argv).pipe(Effect.provide(BunContext.layer), BunRuntime.runMain);

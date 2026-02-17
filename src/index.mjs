@@ -882,3 +882,5 @@ export async function AnthropicAuthPlugin({ client }) {
     },
   };
 }
+
+export default AnthropicAuthPlugin;

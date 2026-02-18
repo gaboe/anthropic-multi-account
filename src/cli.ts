@@ -3,15 +3,19 @@
 import { Args, Command, Options } from "@effect/cli";
 import { BunContext, BunRuntime } from "@effect/platform-bun";
 import { generatePKCE } from "@openauthjs/openauth/pkce";
-import { readFileSync, writeFileSync, existsSync, copyFileSync, renameSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, copyFileSync, renameSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import * as readline from "readline";
 import { Effect, Option } from "effect";
 
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const MULTI_AUTH_FILE = join(homedir(), ".local/share/opencode/multi-account-auth.json");
-const STATE_FILE = join(homedir(), ".local/share/opencode/multi-account-state.json");
+const CONFIG_DIR = join(homedir(), ".config/opencode");
+const MULTI_AUTH_FILE = join(CONFIG_DIR, "anthropic-multi-account-accounts.json");
+const LEGACY_MULTI_AUTH_FILE_CONFIG = join(CONFIG_DIR, "anthropic-multi-accounts.json");
+const LEGACY_MULTI_AUTH_FILE = join(homedir(), ".local/share/opencode/multi-account-auth.json");
+const STATE_FILE = join(CONFIG_DIR, "anthropic-multi-account-state.json");
+const LEGACY_STATE_FILE = join(homedir(), ".local/share/opencode/multi-account-state.json");
 
 const DEFAULTS = { threshold: 0.70, checkInterval: 3600000 };
 
@@ -55,6 +59,7 @@ function safeReadJSON<T>(filePath: string, fallback: T): T {
 
 function safeWriteJSON(filePath: string, data: any) {
   try {
+    mkdirSync(dirname(filePath), { recursive: true });
     if (existsSync(filePath)) {
       copyFileSync(filePath, filePath + '.bak');
     }
@@ -66,12 +71,27 @@ function safeWriteJSON(filePath: string, data: any) {
   }
 }
 
+function readWithFallback<T>(paths: string[], fallback: T): { data: T; source: string | null } {
+  for (const p of paths) {
+    const data = safeReadJSON<T | null>(p, null as T | null);
+    if (data !== null) return { data: data as T, source: p };
+  }
+  return { data: fallback, source: null };
+}
+
 function loadAccounts() {
-  return safeReadJSON(MULTI_AUTH_FILE, { accounts: [] } as any).accounts || [];
+  return loadMultiAuth().accounts || [];
 }
 
 function loadMultiAuth(): any {
-  return safeReadJSON(MULTI_AUTH_FILE, { accounts: [] });
+  const { data, source } = readWithFallback(
+    [MULTI_AUTH_FILE, LEGACY_MULTI_AUTH_FILE_CONFIG, LEGACY_MULTI_AUTH_FILE],
+    { accounts: [] }
+  );
+  if (source === LEGACY_MULTI_AUTH_FILE_CONFIG || source === LEGACY_MULTI_AUTH_FILE) {
+    saveMultiAuth(data);
+  }
+  return data;
 }
 
 function saveMultiAuth(data: any) {
@@ -79,7 +99,11 @@ function saveMultiAuth(data: any) {
 }
 
 function loadState(): any {
-  return safeReadJSON(STATE_FILE, {});
+  const { data, source } = readWithFallback([STATE_FILE, LEGACY_STATE_FILE], {});
+  if (source === LEGACY_STATE_FILE) {
+    saveState(data);
+  }
+  return data;
 }
 
 function saveState(state: any) {

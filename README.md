@@ -55,7 +55,7 @@ Each account requires a separate Anthropic Max subscription.
 <details>
 <summary>Manual configuration (advanced)</summary>
 
-Tokens are stored in `~/.local/share/opencode/multi-account-auth.json`:
+Tokens are stored in `~/.config/opencode/anthropic-multi-account-accounts.json`:
 
 ```json
 {
@@ -208,10 +208,10 @@ Changing config auto-evaluates whether the active account should switch.
 
 Data is split into two files to prevent corruption from frequent writes:
 
-**`~/.local/share/opencode/multi-account-auth.json`** - Tokens (changes rarely)
+**`~/.config/opencode/anthropic-multi-account-accounts.json`** - Tokens (changes rarely)
 - `accounts` - Array of accounts with access/refresh tokens
 
-**`~/.local/share/opencode/multi-account-state.json`** - Runtime state (changes frequently)
+**`~/.config/opencode/anthropic-multi-account-state.json`** - Runtime state (changes frequently)
 - `currentAccount` - Currently active account name
 - `usage` - Per-account usage metrics with timestamps
 - `requestCount` - Total requests made through the plugin

@@ -5,8 +5,20 @@ import { join, dirname } from "path";
 
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const AUTH_FILE = join(homedir(), ".local/share/opencode/auth.json");
-const MULTI_AUTH_FILE = join(homedir(), ".local/share/opencode/multi-account-auth.json");
-const STATE_FILE = join(homedir(), ".local/share/opencode/multi-account-state.json");
+const CONFIG_DIR = join(homedir(), ".config/opencode");
+const MULTI_AUTH_FILE = join(CONFIG_DIR, "anthropic-multi-account-accounts.json");
+const LEGACY_MULTI_AUTH_FILE_CONFIG = join(CONFIG_DIR, "anthropic-multi-accounts.json");
+const LEGACY_MULTI_AUTH_FILE = join(homedir(), ".local/share/opencode/multi-account-auth.json");
+const STATE_FILE = join(CONFIG_DIR, "anthropic-multi-account-state.json");
+const LEGACY_STATE_FILE = join(homedir(), ".local/share/opencode/multi-account-state.json");
+
+function readJsonWithFallback(filePaths, fallback) {
+  for (const filePath of filePaths) {
+    const data = safeReadJSON(filePath, null);
+    if (data !== null) return { data, sourcePath: filePath };
+  }
+  return { data: fallback, sourcePath: null };
+}
 
 // Safe JSON read with .bak fallback
 function safeReadJSON(filePath, fallback) {
@@ -42,7 +54,16 @@ function safeWriteJSON(filePath, data) {
 
 // Read multi-account-auth.json (separate file for multi-account tokens)
 function getMultiAuth() {
-  return safeReadJSON(MULTI_AUTH_FILE, null);
+  const { data, sourcePath } = readJsonWithFallback(
+    [MULTI_AUTH_FILE, LEGACY_MULTI_AUTH_FILE_CONFIG, LEGACY_MULTI_AUTH_FILE],
+    null
+  );
+
+  if ((sourcePath === LEGACY_MULTI_AUTH_FILE_CONFIG || sourcePath === LEGACY_MULTI_AUTH_FILE) && data) {
+    saveMultiAuth(data);
+  }
+
+  return data;
 }
 
 // Save multi-account-auth.json
@@ -52,7 +73,16 @@ function saveMultiAuth(multiAuth) {
 
 // Read state.json (usage, currentAccount, requestCount)
 function getState() {
-  return safeReadJSON(STATE_FILE, {});
+  const { data, sourcePath } = readJsonWithFallback(
+    [STATE_FILE, LEGACY_STATE_FILE],
+    {}
+  );
+
+  if (sourcePath === LEGACY_STATE_FILE && data && typeof data === "object") {
+    saveState(data);
+  }
+
+  return data;
 }
 
 // Save state.json

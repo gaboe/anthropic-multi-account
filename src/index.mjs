@@ -325,6 +325,8 @@ const EMPTY_USAGE = {
   timestamp: null
 };
 
+const AUTH_FAILURE_COOLDOWN = 60 * 60 * 1000;
+
 function ensureAllAccountsInState(accounts, state) {
   if (!accounts?.length) return false;
   state.usage = state.usage || {};
@@ -360,6 +362,13 @@ function selectThresholdAccount(accounts, state) {
   const config = state?.config || {};
   const thresholds = normalizeThresholds(config.threshold, 0.70);
   const CHECK_INTERVAL = config.checkInterval ?? 3600000;
+  const now = Date.now();
+  const authFailures = state?.authFailures || {};
+
+  function isTemporarilyUnavailable(accountName) {
+    const until = authFailures?.[accountName];
+    return typeof until === 'number' && until > now;
+  }
 
   if (!accounts || accounts.length === 0) return null;
   if (accounts.length === 1) return accounts[0];
@@ -406,22 +415,23 @@ function selectThresholdAccount(accounts, state) {
     if (isOverThreshold(primaryUsage)) {
       for (const fallback of fallbacks) {
         const fallbackUsage = state.usage?.[fallback.name];
-        if (!isOverThreshold(fallbackUsage)) {
+        if (!isOverThreshold(fallbackUsage) && !isTemporarilyUnavailable(fallback.name)) {
           const exceeded = getExceededMetric(primaryUsage);
           console.log(`[multi-account] ${primary.name} → ${fallback.name}: ${exceeded.name} at ${Math.round(exceeded.value * 100)}% (threshold ${Math.round(exceeded.threshold * 100)}%)`);
           return fallback;
         }
       }
-      const best = fallbacks.reduce((lowest, f) => {
+      const availableFallbacks = fallbacks.filter((fallback) => !isTemporarilyUnavailable(fallback.name));
+      const pool = availableFallbacks.length > 0 ? availableFallbacks : fallbacks;
+      const best = pool.reduce((lowest, f) => {
         return getUtilizationScore(state.usage?.[f.name]) < getUtilizationScore(state.usage?.[lowest.name]) ? f : lowest;
-      }, fallbacks[0]);
+      }, pool[0]);
       const exceeded = getExceededMetric(primaryUsage);
       console.log(`[multi-account] ${primary.name} → ${best.name}: ${exceeded.name} at ${Math.round(exceeded.value * 100)}% (all accounts busy)`);
       return best;
     }
     return primary;
   } else {
-    const now = Date.now();
     const lastCheck = state.lastPrimaryCheck || 0;
     
     function getEarliestResetTime(usage) {
@@ -448,7 +458,13 @@ function selectThresholdAccount(accounts, state) {
       }
     }
     
-    return accounts.find(a => a.name === state.currentAccount) || fallbacks[0];
+    const current = accounts.find((candidate) => candidate.name === state.currentAccount);
+    if (current && !isTemporarilyUnavailable(current.name)) {
+      return current;
+    }
+
+    const nextFallback = fallbacks.find((fallback) => !isTemporarilyUnavailable(fallback.name));
+    return nextFallback || primary;
   }
 }
 
@@ -717,11 +733,76 @@ export async function AnthropicAuthPlugin({ client }) {
                     : requestUrl;
               }
 
-              const response = await fetch(requestInput, {
-                ...requestInit,
-                body,
-                headers: requestHeaders,
-              });
+              function isScopeFailureResponse(responseBody, status) {
+                if (status !== 401 && status !== 403) return false;
+                if (!responseBody) return status === 401;
+                const text = responseBody.toLowerCase();
+                return (
+                  text.includes("scope requirement") ||
+                  text.includes("oauth token does not meet scope requirement") ||
+                  text.includes("invalid oauth token") ||
+                  text.includes("unauthorized")
+                );
+              }
+
+              const attemptedRequestAccounts = new Set();
+              let response;
+
+              while (true) {
+                attemptedRequestAccounts.add(account.name);
+                requestHeaders.set("authorization", `Bearer ${account.access}`);
+
+                response = await fetch(requestInput, {
+                  ...requestInit,
+                  body,
+                  headers: requestHeaders,
+                });
+
+                if (response.status !== 401 && response.status !== 403) {
+                  break;
+                }
+
+                let responseBody = "";
+                try {
+                  responseBody = await response.clone().text();
+                } catch {
+                  responseBody = "";
+                }
+
+                if (!isScopeFailureResponse(responseBody, response.status)) {
+                  break;
+                }
+
+                state.authFailures = state.authFailures || {};
+                state.authFailures[account.name] = Date.now() + AUTH_FAILURE_COOLDOWN;
+
+                const retryAccount = accounts.find(
+                  (candidate) =>
+                    !attemptedRequestAccounts.has(candidate.name) &&
+                    (!state.authFailures?.[candidate.name] || state.authFailures[candidate.name] <= Date.now()),
+                );
+
+                if (!retryAccount) {
+                  break;
+                }
+
+                console.warn(`[multi-account] auth scope failed for ${account.name}, trying ${retryAccount.name}`);
+                account = retryAccount;
+                state.currentAccount = account.name;
+                if (account.name !== previousAccount && account.name !== primaryName) {
+                  state.lastPrimaryCheck = Date.now();
+                }
+
+                const retryRefresh = await ensureFreshAccountToken(account, multiAuth);
+                if (!retryRefresh.ok) {
+                  state.authFailures[account.name] = Date.now() + AUTH_FAILURE_COOLDOWN;
+                  continue;
+                }
+              }
+
+              if (state.authFailures?.[account.name]) {
+                delete state.authFailures[account.name];
+              }
 
               // Capture usage from response headers and save to state
               // Only update metrics when headers are actually present to avoid

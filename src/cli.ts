@@ -478,7 +478,7 @@ async function cmdAdd(args: string[]) {
     // Interactive mode - generate PKCE and show auth URL
     const pkce = await generatePKCE();
 
-    const url = new URL("https://console.anthropic.com/oauth/authorize");
+    const url = new URL("https://claude.ai/oauth/authorize");
     url.searchParams.set("code", "true");
     url.searchParams.set("client_id", CLIENT_ID);
     url.searchParams.set("response_type", "code");

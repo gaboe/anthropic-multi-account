@@ -1,14 +1,17 @@
 {
   "name": "oc-anthropic-multi-account",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "type": "module",
   "description": "OpenCode plugin for managing multiple Anthropic Max accounts with automatic failover based on rate limit utilization",
   "main": "dist/index.js",
+  "bin": {
+    "oc-anthropic-multi-account": "dist/cli.js"
+  },
   "exports": {
     ".": "./dist/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.mjs --outfile dist/index.js --format esm --target node",
+    "build": "bun build src/index.mjs --outfile dist/index.js --format esm --target node && bun build src/cli.ts --outfile dist/cli.js --format esm --target bun",
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run clean && bun run build",
     "postinstall": "node postinstall.mjs || true"

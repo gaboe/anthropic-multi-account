@@ -546,6 +546,47 @@ async function cmdAdd(args: string[]) {
   console.log("🎉 Restart OpenCode to use the new account.\n");
 }
 
+async function cmdPing(alias: string) {
+  try {
+    const accounts = loadAccounts();
+    const account = accounts.find((item: any) => item.name === alias);
+
+    if (!account) {
+      console.log(JSON.stringify({ status: "error", alias, error: `Account not found: ${alias}` }));
+      return;
+    }
+
+    if (!account.access) {
+      console.log(JSON.stringify({ status: "error", alias, error: "Missing access token" }));
+      return;
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.access}`,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-haiku-20241022",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "ping" }],
+      }),
+    });
+
+    if (res.ok) {
+      console.log(JSON.stringify({ status: "ok", alias }));
+      return;
+    }
+
+    const text = await res.text();
+    console.log(JSON.stringify({ status: "error", alias, error: `HTTP ${res.status}: ${text.slice(0, 200)}` }));
+  } catch (err) {
+    console.log(JSON.stringify({ status: "error", alias, error: String(err) }));
+  }
+}
+
 const usageCommand = Command.make(
   "usage",
   {
@@ -643,6 +684,9 @@ const configAliasCommand = Command.make(
 const accountNameArg = Args.text({ name: "name" }).pipe(
   Args.withDescription("Account alias")
 );
+const pingAliasArg = Args.text({ name: "alias" }).pipe(
+  Args.withDescription("Account alias to ping")
+);
 const authUrlArg = Args.text({ name: "auth-url" }).pipe(Args.optional);
 const codeArg = Args.text({ name: "code" }).pipe(Args.optional);
 
@@ -684,6 +728,20 @@ const addAliasCommand = Command.make(
     })
 ).pipe(Command.withDescription("Alias for add"));
 
+const pingCommand = Command.make(
+  "ping",
+  {
+    alias: pingAliasArg,
+  },
+  ({ alias }) =>
+    Effect.tryPromise({
+      try: async () => {
+        await cmdPing(alias);
+      },
+      catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+    })
+).pipe(Command.withDescription("Ping an account alias and output JSON"));
+
 const rootCommand = Command.make("anthropic-multi-account", {}).pipe(
   Command.withDescription("Manage multiple Anthropic Max accounts for OpenCode"),
   Command.withSubcommands([
@@ -691,6 +749,7 @@ const rootCommand = Command.make("anthropic-multi-account", {}).pipe(
     usageAliasCommand,
     configCommand,
     configAliasCommand,
+    pingCommand,
     addCommand,
     addAliasCommand,
   ])

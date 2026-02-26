@@ -546,6 +546,40 @@ async function cmdAdd(args: string[]) {
   console.log("🎉 Restart OpenCode to use the new account.\n");
 }
 
+async function refreshToken(account: any): Promise<string | null> {
+  if (account.access && account.expires > Date.now()) return null;
+  if (!account.refresh) return "No refresh token available";
+  try {
+    const res = await fetch("https://console.anthropic.com/v1/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        refresh_token: account.refresh,
+        client_id: CLIENT_ID,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      return `Token refresh failed (${res.status}): ${body.slice(0, 200)}`;
+    }
+    const json = await res.json() as { access_token: string; refresh_token: string; expires_in: number };
+    account.access = json.access_token;
+    account.refresh = json.refresh_token;
+    account.expires = Date.now() + json.expires_in * 1000;
+    // Persist refreshed tokens
+    const multiAuth = loadMultiAuth();
+    const idx = multiAuth.accounts?.findIndex((a: any) => a.name === account.name) ?? -1;
+    if (idx >= 0) {
+      multiAuth.accounts[idx] = account;
+      saveMultiAuth(multiAuth);
+    }
+    return null;
+  } catch (err) {
+    return `Token refresh error: ${String(err)}`;
+  }
+}
+
 async function cmdPing(alias: string) {
   try {
     const accounts = loadAccounts();
@@ -556,20 +590,29 @@ async function cmdPing(alias: string) {
       return;
     }
 
-    if (!account.access) {
-      console.log(JSON.stringify({ status: "error", alias, error: "Missing access token" }));
+    if (!account.access && !account.refresh) {
+      console.log(JSON.stringify({ status: "error", alias, error: "Missing access token and refresh token" }));
       return;
     }
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    // Refresh token if expired
+    const refreshError = await refreshToken(account);
+    if (refreshError) {
+      console.log(JSON.stringify({ status: "error", alias, error: refreshError }));
+      return;
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages?beta=true", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${account.access}`,
-        "anthropic-version": "2023-06-01",
+        "authorization": `Bearer ${account.access}`,
+        "anthropic-beta": "oauth-2025-04-20,interleaved-thinking-2025-05-14",
+        "user-agent": "claude-cli/2.1.2 (external, cli)",
         "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 1,
         messages: [{ role: "user", content: "ping" }],
       }),

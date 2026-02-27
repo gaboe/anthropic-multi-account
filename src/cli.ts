@@ -630,6 +630,82 @@ async function cmdPing(alias: string) {
   }
 }
 
+async function cmdReauth(alias: string, callbackUrl?: string, verifier?: string) {
+  try {
+    const accounts = loadAccounts();
+    const account = accounts.find((item: any) => item.name === alias);
+
+    if (!account) {
+      console.log(JSON.stringify({ status: "error", alias, error: `Account not found: ${alias}` }));
+      return;
+    }
+
+    if (!callbackUrl) {
+      // Step 1: Generate auth URL
+      const pkce = await generatePKCE();
+      const url = new URL("https://claude.ai/oauth/authorize");
+      url.searchParams.set("code", "true");
+      url.searchParams.set("client_id", CLIENT_ID);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("redirect_uri", "https://console.anthropic.com/oauth/code/callback");
+      url.searchParams.set("scope", "org:create_api_key user:profile user:inference");
+      url.searchParams.set("code_challenge", pkce.challenge);
+      url.searchParams.set("code_challenge_method", "S256");
+      url.searchParams.set("state", pkce.verifier);
+      console.log(JSON.stringify({ url: url.toString(), verifier: pkce.verifier }));
+      return;
+    }
+
+    // Step 2: Exchange callback URL for tokens
+    if (!verifier) {
+      console.log(JSON.stringify({ status: "error", alias, error: "Missing --verifier" }));
+      return;
+    }
+
+    let code: string;
+    try {
+      const parsed = new URL(callbackUrl);
+      code = parsed.searchParams.get("code") || callbackUrl;
+    } catch {
+      code = callbackUrl;
+    }
+
+    const response = await fetch("https://console.anthropic.com/v1/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code,
+        state: verifier,
+        grant_type: "authorization_code",
+        client_id: CLIENT_ID,
+        redirect_uri: "https://console.anthropic.com/oauth/code/callback",
+        code_verifier: verifier,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.log(JSON.stringify({ status: "error", alias, error: `Token exchange failed (${response.status}): ${text.slice(0, 200)}` }));
+      return;
+    }
+
+    const json = await response.json() as { access_token: string; refresh_token: string; expires_in: number };
+    const multiAuth = loadMultiAuth();
+    multiAuth.accounts ??= [];
+    const updated = { name: alias, access: json.access_token, refresh: json.refresh_token, expires: Date.now() + json.expires_in * 1000 };
+    const idx = multiAuth.accounts.findIndex((a: any) => a.name === alias);
+    if (idx >= 0) {
+      multiAuth.accounts[idx] = updated;
+    } else {
+      multiAuth.accounts.push(updated);
+    }
+    saveMultiAuth(multiAuth);
+    console.log(JSON.stringify({ status: "ok", alias }));
+  } catch (err) {
+    console.log(JSON.stringify({ status: "error", alias, error: String(err) }));
+  }
+}
+
 const usageCommand = Command.make(
   "usage",
   {
@@ -785,6 +861,30 @@ const pingCommand = Command.make(
     })
 ).pipe(Command.withDescription("Ping an account alias and output JSON"));
 
+const reauthAliasArg = Args.text({ name: "alias" }).pipe(
+  Args.withDescription("Account alias to re-authenticate")
+);
+
+const reauthCommand = Command.make(
+  "reauth",
+  {
+    alias: reauthAliasArg,
+    callback: Options.text("callback").pipe(Options.optional),
+    verifier: Options.text("verifier").pipe(Options.optional),
+  },
+  ({ alias, callback, verifier }) =>
+    Effect.tryPromise({
+      try: async () => {
+        await cmdReauth(
+          alias,
+          Option.isSome(callback) ? callback.value : undefined,
+          Option.isSome(verifier) ? verifier.value : undefined,
+        );
+      },
+      catch: (err) => (err instanceof Error ? err : new Error(String(err))),
+    })
+).pipe(Command.withDescription("Re-authenticate an existing account (JSON output)"));
+
 const rootCommand = Command.make("anthropic-multi-account", {}).pipe(
   Command.withDescription("Manage multiple Anthropic Max accounts for OpenCode"),
   Command.withSubcommands([
@@ -793,6 +893,7 @@ const rootCommand = Command.make("anthropic-multi-account", {}).pipe(
     configCommand,
     configAliasCommand,
     pingCommand,
+    reauthCommand,
     addCommand,
     addAliasCommand,
   ])

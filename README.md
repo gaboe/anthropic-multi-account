@@ -24,7 +24,7 @@ OpenCode will install the plugin automatically on next launch.
 
 Add this to your `~/.zshrc` or `~/.bashrc`:
 
-MaxOS
+MacOS
 ```bash
 export OPENCODE_DISABLE_DEFAULT_PLUGINS=true
 ```
